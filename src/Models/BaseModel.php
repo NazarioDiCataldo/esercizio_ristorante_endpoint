@@ -7,9 +7,9 @@ use App\Database\DB;
 
 abstract class BaseModel
 {
-    protected ?int $id = null;
-    protected ?string $created_at = null;
-    protected ?string $updated_at = null;
+    public ?int $id = null;
+    public ?string $created_at = null;
+    public ?string $updated_at = null;
 
     protected static string $collection;
 
@@ -207,7 +207,7 @@ abstract class BaseModel
     public function toArray(): array
     {
         $reflection = new \ReflectionClass($this);
-        $properties = $reflection->getProperties(\ReflectionProperty::IS_PROTECTED | \ReflectionProperty::IS_PUBLIC);
+        $properties = $reflection->getProperties(\ReflectionProperty::IS_PROTECTED | \ReflectionProperty::IS_PUBLIC | \ReflectionProperty::IS_PRIVATE);
 
         $result = [];
         foreach ($properties as $property) {

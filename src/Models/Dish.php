@@ -10,11 +10,11 @@ namespace App\Models {
         use WithValidate;
 
         //Props
-        protected ?string $allergens = null;
-        protected ?bool $is_vegetarian = null;
-        protected ?bool $is_vegan = null;
-        protected ?bool $is_gluten_free = null;
-        protected ?int $preparation_time = null;
+        public ?string $allergens = null;
+        public ?bool $is_vegetarian = null;
+        public ?bool $is_vegan = null;
+        public ?bool $is_gluten_free = null;
+        public ?int $preparation_time = null;
 
         /**
          * Nome della collection

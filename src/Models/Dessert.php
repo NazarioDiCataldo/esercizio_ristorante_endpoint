@@ -11,9 +11,9 @@ namespace App\Models {
         use WithValidate;
 
         //Props
-        protected ?bool $is_gluten_free = null;
-        protected ?bool $is_sugar_free = null;
-        protected ?bool $contains_nuts = null;
+        public ?bool $is_gluten_free = null;
+        public ?bool $is_sugar_free = null;
+        public ?bool $contains_nuts = null;
 
         /**
          * Nome della collection

@@ -317,6 +317,7 @@ Router::delete('/order_items/{id}/remove_supplement', function($id) {
         //Adesso che so che il supplemente cercato esiste, è valido ed anche l'orderItem collegato esiste
         //Posso passare a cancellare dalla tabella supplements il record 
         $order_item->removeSupplements($data['name']);
+        Response::success(null, Response::HTTP_NO_CONTENT, "Supplemento rimosso con successo")->send();
     } catch(\Exception $e) {
         Response::error("Errore durante l'eliminazione del supplemento: " . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();
     }
@@ -361,6 +362,7 @@ Router::delete('/order_items/{id}/remove_note', function($id) {
         //Adesso che so che il supplemente cercato esiste, è valido ed anche l'orderItem collegato esiste
         //Posso passare a cancellare dalla tabella supplements il record 
         $order_item->removeNote($data);
+        Response::success(null, Response::HTTP_NO_CONTENT, "Nota rimossa con successo")->send();
     } catch(\Exception $e) {
         Response::error("Errore durante l'eliminazione della nota: " . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();
     }

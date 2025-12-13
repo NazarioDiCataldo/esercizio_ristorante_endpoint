@@ -11,9 +11,9 @@ namespace App\Models {
         use WithValidate;
 
         //Props
-        protected ?int $volume = null;
-        protected ?bool $is_alcoholic = null;
-        protected ?string $temperature = null;
+        public ?int $volume = null;
+        public ?bool $is_alcoholic = null;
+        public ?string $temperature = null;
         
         /**
          * Nome della collection

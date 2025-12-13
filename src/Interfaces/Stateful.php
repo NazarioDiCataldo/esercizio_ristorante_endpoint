@@ -2,6 +2,8 @@
 
 namespace App\Interfaces {
 
+    use App\Models\Order;
+
     //Interfaccia che comprende metodi per gestire gli stati
     interface Stateful {
 
@@ -9,12 +11,12 @@ namespace App\Interfaces {
         public function getCurrentState():string;
 
         //metodo per verificare se la transizione è valida
-        public function canTransitionTo(string $new_state):bool;
+        public static function canTransitionTo(Order $order, string $new_state):bool;
 
         //metodo che cambia lo stato
-        public function transitionTo(string $new_state):void;
+        public function transitionTo(Order $order, string $new_state):void;
 
         //metodo che ritorna gli stati raggiungibili
-        public function getAvailableTransitions():array;
+        public static function getAvailableTransitions(Order $order):array;
     }
 }

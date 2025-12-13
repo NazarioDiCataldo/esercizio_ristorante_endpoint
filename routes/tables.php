@@ -44,7 +44,7 @@ Router::get('/tables/{id}', function ($id) {
 /**
  * GET /api/tables/{id}/has_capacity - Verifica se una tavolo sia libero
 */
-Router::get('/tables/{id}/has_capacity', function ($id) {
+Router::get('/tables/{id}/has_capacity/{guests}', function ($id, $guests) {
     try {
         //Verifica che il tavolo esista
         $table = Table::find($id);
@@ -54,8 +54,13 @@ Router::get('/tables/{id}/has_capacity', function ($id) {
             Response::error('Tavolo non trovato', Response::HTTP_NOT_FOUND)->send();
         }
 
+        if(!is_numeric($guests) || $guests < 0 ) {
+            Response::error('Numero di ospiti non validi', Response::HTTP_BAD_REQUEST)->send();
+            return;
+        }
+
         //Chiama il metodo hasCapacity;
-        $has_capacity = $table->hasCapacity();
+        $has_capacity = $table->hasCapacity($guests);
         $message = $has_capacity ? 'Il tavolo ha posti disponibili' : 'Il tavolo non ha più posti disponibili'; 
 
         Response::success($has_capacity, Response::HTTP_OK, $message)->send();

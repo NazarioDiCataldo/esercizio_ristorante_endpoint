@@ -19,9 +19,10 @@ namespace App\Models {
         use WithValidate;
 
         //Props
-        protected ?MenuItem $menu_item = null;
-        protected ?int $quantity = null;
-        protected ?string $customization = null;
+        public ?MenuItem $menu_item = null;
+        public ?int $quantity = null;
+        public ?string $customization = null;
+        public ?int $order_id = null;
 
         /**
          * Nome della collection
@@ -188,6 +189,7 @@ namespace App\Models {
                     return "Il tipo deve uno tra: " . MenuItem::MENU_ITEM_TYPE_DESSERT . ", " . MenuItem::MENU_ITEM_TYPE_DISH . " o " . MenuItem::MENU_ITEM_TYPE_BEVERAGE;
                 }
             }],
+            "order_id" => ['sometimes','required', 'numeric', 'min:1'],
             "quantity" => ['required', "sometimes", "numeric", "min:1", "max: 10"],
             "customizations" => ['min:2', "max:300"],
             "name" => ['min:2', 'max:30'],

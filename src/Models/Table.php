@@ -23,10 +23,19 @@ namespace App\Models;
         parent::__construct($data);
     }
 
+    //Getters
+    public function getCapacity():int {
+        return $this->capacity;
+    }
+
+    public function getCurrentGuests():int {
+        return $this->current_guests;
+    }
+
     //Metodi
     public function occupy(int $guests):void {
         //Prima verifico se il tavolo non sia gà occupato
-        if($this->hasCapacity()) {
+        if($this->hasCapacity($guests)) {
             //Aggiungo le persone e rendo il tavolo occupato
             $this->update([
                 "is_occupied" => true,
@@ -44,11 +53,11 @@ namespace App\Models;
         ]);
     }
 
-    public function hasCapacity():bool {
+    public function hasCapacity(int $guests):bool {
         //Ritorna il contrario di is_occupied
         //non occupato(false) -> ha capacità(true)
         //occupato(true) -> non ha capacita(false)
-        return !static::find($this->id)->is_occupied;
+        return !$this->is_occupied && $this->capacity >= $guests;
     }
 
     //Override dei metodi validate

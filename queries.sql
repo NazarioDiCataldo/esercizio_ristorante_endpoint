@@ -123,15 +123,14 @@ create table orders(
 	foreign key(table_id) references tables(number)
 ); 
 
-create table order_notifications(
-	id smallint generated always as identity primary key,
+create table orders_tables (
+	id smallserial,
 	order_id smallint not null,
-	notification_id smallint not null,
-	created_at timestamp default now(),
-	updated_at timestamp,
+	table_id smallint not null,
+	primary key(id),
 	foreign key(order_id) references orders(id),
-	foreign key(notification_id) references notifications(id)
-); 
+	foreign key(table_id) references orders(id)
+)
 
 /* DML */
 

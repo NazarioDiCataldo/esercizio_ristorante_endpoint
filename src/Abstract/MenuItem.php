@@ -12,11 +12,11 @@ namespace App\Abstract {
     abstract class MenuItem extends BaseModel{
 
         //Proprs
-        protected ?string $name = null;
-        protected ?string $description = null;
-        protected ?float $base_price = null;
-        protected ?string $category = null;
-        protected ?string $item_type = null;
+        public ?string $name = null;
+        public ?string $description = null;
+        public ?float $base_price = null;
+        public ?string $category = null;
+        public ?string $item_type = null;
 
         //Costanti i tipi di menuItem
         const MENU_ITEM_TYPE_DISH = 'dish';

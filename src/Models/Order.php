@@ -2,28 +2,30 @@
 
 namespace App\Models {
 
+    use App\Database\DB;
     use App\Interfaces\Notificable;
     use App\Interfaces\Stateful;
     use App\Services\NotificationService;
     use App\Services\OrderStateService;
     use App\Traits\ValidatesOrder;
-    use DateTime;
+    use App\Traits\WithValidate;
+    use App\Utils\Response;
 
-    class Order implements Stateful, Notificable{
+    class Order extends BaseModel implements Stateful, Notificable{
 
-        //richiamo il trait
+        //richiamo i traits
         use ValidatesOrder;
+        use WithValidate;
 
         //props
-        private ?int $id = null;
-        private ?Table $table = null; 
-        private ?array $items = null;
-        private ?string $state = null;
-        private ?DateTime $created_at = null;
-        private ?float $cover_charge = null;
-        private ?float $service_charge = null;
-        private ?float $tip = null; 
-        private ?array $notifications = null;
+        protected ?Table $table_guests = null; 
+        protected ?array $items = null;
+        protected ?string $state = null;
+        protected ?string $datetime = null;
+        protected ?float $cover_charge = null;
+        protected ?float $service_charge = null;
+        protected ?float $tip = null; 
+        protected ?array $notifications = null;
 
         //costanti
         const STATE_NEW = "new";
@@ -32,19 +34,14 @@ namespace App\Models {
         const STATE_SERVED = "served";
         const STATE_CANCELLED = 'cancelled';
 
-        //Costruttore
-        public function __construct(array $data) {
-            $this->id = count(OrderStateService::$all_orders) + 1;
-            $this->table = $data['table'] ?? null;
-            $this->items = $data['items'] ?? null;
-            $this->created_at = new DateTime('now');
-            $this->state = $data['state'] ?? 'new';
-            $this->cover_charge = $data['cover_charge'] ?? null;
-            $this->service_charge = $data['service_charge'] ?? null;
-            $this->tip = $data['tip'] ?? null;
-            $this->notifications = $data['notifications'] ?? null;
+        /**
+         * Nome della collection
+        */
+        protected static ?string $table = "orders";
 
-            OrderStateService::$all_orders[$this->id] = $this;
+        //Costruttore
+        public function __construct(array $data = []) {
+            parent::__construct($data);
         }
 
         //Getters
@@ -53,7 +50,7 @@ namespace App\Models {
         }
 
         public function getTable():Table {
-            return $this->table;
+            return $this->table_guests;
         }
 
         public function getItems():array {
@@ -64,8 +61,8 @@ namespace App\Models {
             return $this->cover_charge;
         }
 
-        public function getCreatedAt():DateTime {
-            return $this->created_at;
+        public function getDatetime():string {
+            return $this->datetime;
         }
 
         public function getServiceCharge():float {
@@ -91,8 +88,8 @@ namespace App\Models {
             return $this;
         }
 
-        public function setTable(Table $table):static {
-            $this->table = $table;
+        public function setTable(Table $table_guests):static {
+            $this->table_guests = $table_guests;
             return $this;
         }
 
@@ -101,8 +98,8 @@ namespace App\Models {
             return $this;
         }
 
-        public function setCreatedAt(DateTime $created_at):static {
-            $this->created_at = $created_at;
+        public function setDatetime(string $datetime):static {
+            $this->datetime = $datetime;
             return $this;
         }
 
@@ -195,12 +192,90 @@ namespace App\Models {
         public function getCurrentState():string {
             return $this->state;
         }  
+
+        //Ritorna tutti gli orderItems collegati all'ordine passato come parametro
+        public static function getOrderItemByOrder(int $order_id, string $select = 'id'):array { //Di default ci interssa sapere solo l'id dell'orderItem, cosi da poterci creare l'istanza
+            $array_order_items = DB::select("SELECT id FROM " . OrderItem::getTableName() . " WHERE order_id = :id", 
+                [
+                    "id" => $order_id
+                ]); 
+
+            //Trasformo da array di risultati della query, in array di oggetti OrderItem
+            $array_order_items = array_map(function ($id) {
+                $id = array_values($id)[0];
+                return OrderItem::getOrderItemById($id);
+            } ,$array_order_items);
+
+            return $array_order_items;
+        }
+
+        //Ricevo tutti gli ordini, completi di riferimento al tavolo
+        public static function getAllOrders(): array {
+            //Mi prendo prima tutti gli ordini
+            $orders = Order::all();
+
+            //Itero sull'array e verifico record per record, per fare delle Join precise
+            foreach($orders as $order) {
+                //Mi prendo tutti gli order_item collegati all'ordine
+                $order->setItems(Order::getOrderItemByOrder($order->getId()));
+                //Mi prendo l'istanza del tavolo dalla tabella pivot
+                $tablo = OrdersTables::getTableByOrder($order);
+                //Imposto il tavolo tramite setter
+                $order->setTable($tablo);
+            }
+
+            return $orders;
+        } 
+
+        //Ricevo l'ordine specifico, completo di riferimento al tavolo
+        public static function getOrderById(int $id): ?static {
+            //Mi prendo il singolo ordine, tramite id passato come parametro
+            $order = Order::find($id);
+
+            //Verifico che esista, altrimenti lancia errore
+            if($order === null) {
+                Response::error('Ordine non trovato', Response::HTTP_NOT_FOUND)->send();
+            }
+
+            //Mi prendo tutti gli order_item collegati all'ordine
+            $order->setItems(Order::getOrderItemByOrder($order->getId()));
+
+            $tablo = OrdersTables::getTableByOrder($order);
+            //Imposto il tavolo tramite setter
+            $order->setTable($tablo);
+
+            return $order;
+        }
+
+        //Rimuovo l'ordine specifico, rimuovo il record nella tabella pivot e libero il tavolo
+        public static function removeOrder(int $id): void {
+            //Mi prendo il singolo ordine, tramite id passato come parametro
+            $order = Order::find($id);
+
+            //Verifico che esista, altrimenti lancia errore
+            if($order === null) {
+                Response::error('Ordine non trovato', Response::HTTP_NOT_FOUND)->send();
+            }
+
+            //Mi creo l'oggetto Table, per poi poter liberare il tavolo
+            $tablo = OrdersTables::getTableByOrder($order);
+            $tablo->free();
+
+            //Rimuovo il record sulla tabella
+            OrdersTables::removeRecord($order);
+
+
+            //Infine elimino il record dalla tabella orders
+            $order->delete();
+        }
         
         //Verifica se è possibile cambiare lo stato
-        public function canTransitionTo(string $new_state): bool {
+        public static function canTransitionTo(Order $order, string $new_state): bool {
             //Verifica per ogni stato
+
+            $available_transitions = Order::getAvailableTransitions($order);
             //Se l'array degl stati disponibili ritorna un'array non vuoto, verifica che lo state passato sia contenuto nell'array ritornato
-            if(!empty($this->getAvailableTransitions()) && is_numeric(array_search($new_state, $this->getAvailableTransitions())) ) {
+            if(!empty($available_transitions) && is_numeric(array_search($new_state, $available_transitions)) ) {
                 return true;
             } else {
                 return false;
@@ -208,20 +283,20 @@ namespace App\Models {
         }
 
         //Ritorna i cambiamenti di stato possibili per ogni state
-        public function getAvailableTransitions(): array {
+        public static function getAvailableTransitions(Order $order): array {
             
-            if($this->state === $this::STATE_NEW) {
+            if($order->getCurrentState() === Order::STATE_NEW) {
                 //new → preparing
                 //new → served (se annullato)
-                return [$this::STATE_PREPARING, $this::STATE_SERVED];
+                return [Order::STATE_PREPARING, Order::STATE_SERVED];
                 
-            } else if($this->state === $this::STATE_PREPARING) {
+            } else if($order->getCurrentState() === Order::STATE_PREPARING) {
                 //preparing → ready
                 //preparing → new (se annullato)
-                return [$this::STATE_READY, $this::STATE_NEW];
-            } else if($this->state === $this::STATE_READY) {
+                return [Order::STATE_READY, Order::STATE_NEW];
+            } else if($order->getCurrentState() === Order::STATE_READY) {
                 //ready → served
-                return [$this::STATE_READY];
+                return [Order::STATE_READY];
             } else {
                 //se è served, non può cambiare con nessuno e quindi array vuoto
                 //oppure se new_state non è compatibile sempre array vuoto
@@ -230,11 +305,42 @@ namespace App\Models {
         }
 
         //cambia stato
-        public function transitionTo(string $new_state): void {
+        public function transitionTo(Order $order, string $new_state): void {
             //se ritorna true, posso effettuare il passaggio
-            if($this->canTransitionTo($new_state)) {
+            if(Order::canTransitionTo($order, $new_state)) {
                 $this->state = $new_state;
             }
+        }
+
+        //Override dei metodi validate
+        protected static function validationRules(): array {
+        return [
+            "guests" => ["sometimes", "required", "numeric", "min:1", "max:12"],
+            "state" => ['sometimes','required', function($field, $value, $data) {
+                $order = null;
+                $current_state = null;
+                //Mi prendo l'order, tramite id (se esiste)
+                if(array_key_exists('id', $data)) {
+                    //Se si, uso il metodo find
+                    $order = Order::find($data['id']); //non mi serve sapere il tavolo, quindi semplice find
+                }
+
+                //Controllo se il tipo è uno tra dish, dessert o beverage
+                if(!in_array($value, [Order::STATE_NEW, Order::STATE_PREPARING, Order::STATE_READY, Order::STATE_SERVED, Order::STATE_CANCELLED])) {
+                    return "Il tipo deve uno tra: " . Order::STATE_NEW . ", " . Order::STATE_PREPARING . ", " . Order::STATE_READY . ", " . Order::STATE_SERVED . " o " . Order::STATE_CANCELLED;
+                    
+                    //Se sono nell'update, verifico se il nuovo state è compatibile
+                } else if($order !== null && !Order::canTransitionTo($order, $value)) {
+                    return "Il nuovo stato deve essere uno tra " . Order::getAvailableTransitions($order);
+                } 
+
+                return null;
+            }],
+            "cover_charge" => ['required', "sometimes", "numeric", "min:0", "max: 99.99"],
+            "service_charge" => ['sometimes', "numeric", "min:0", "max: 99.99"],
+            "tip" => ['sometimes', "numeric", "min:0", "max: 99.99"],
+            "datetime" => ['sometimes', "datetime"],
+            ];
         }
     }
 }
