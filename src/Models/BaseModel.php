@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Database\JSONDB;
 use App\Database\DB;
+use App\Utils\Request;
 
 abstract class BaseModel
 {
@@ -202,6 +203,13 @@ abstract class BaseModel
             throw new \Exception("Errore durante l'eliminazione dell'utente");
         }
         return $result;
+    }
+
+    public static function getRequestData():array {
+        $request = new Request();
+        $data = $request->json();
+
+        return $data ?? [];
     }
 
     public function toArray(): array

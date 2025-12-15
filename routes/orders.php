@@ -4,12 +4,15 @@
 
 use App\Abstract\MenuItem;
 use App\Models\MenuOrderItem;
+use App\Models\Notification;
 use App\Models\Order;
 use App\Utils\Response;
 use App\Models\OrderItem;
 use App\Models\OrdersTables;
 use App\Models\Table;
+use App\Services\RestaurantService;
 use App\Utils\Request;
+use Pecee\SimpleRouter\Route\Route;
 use Pecee\SimpleRouter\SimpleRouter as Router;
 
 /**
@@ -17,17 +20,44 @@ use Pecee\SimpleRouter\SimpleRouter as Router;
  */
 Router::get('/orders', function () {
     try {
-        //Mi prendo prima tutti gli ordini
-        $orders = Order::getAllOrders();
+        $orders = null;
+        //Verifico che non ci siano query params
+        if(empty($_GET)) {
+            //Mi prendo prima tutti gli ordini
+            $orders = Order::getAllOrders();
+        } else if(array_key_exists('state', $_GET)) {
+            //Verifico se c'è il filtro state
+            $orders = RestaurantService::getOrdersByState($_GET['state']);
+        } else if(array_key_exists('table', $_GET)) {
+            //Verifico se c'è il filtro table
+            print_r($_GET['table']);
+            $orders = RestaurantService::getOrdersByTable($_GET['table']);
+        }
 
-        Response::success($orders)->send();
+        //Response::success($orders)->send();
+        Response::success($orders ?? [])->send();
     } catch (\Exception $e) {
-        Response::error('Errore nel recupero della lista orderItems: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();
+        Response::error('Errore nel recupero della lista degli ordini: ' . $e->getMessage() . " " . $e->getFile() . " " . $e->getLine(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();
     }
 });
 
 /**
- * GET /api/orders/{id} - Lista Orders
+ * GET /api/orders/{id}/bill - Lista di ordini in base allo stato
+*/
+Router::get('/orders/{id}/bill', function ($id) {
+    try {
+        $order = Order::getOrderById($id);
+
+        $bill = RestaurantService::printBill($order);
+
+        Response::success($bill)->send();
+    } catch (\Exception $e) {
+        Response::error("Errore nel recupero dell'ordine: " . $e->getMessage() . " " . $e->getFile() . " " . $e->getLine(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();
+    }
+});
+
+/**
+ * GET /api/orders/{id} - Lista di un ordine tramite id
 */
 Router::get('/orders/{id}', function ($id) {
     try {
@@ -35,12 +65,39 @@ Router::get('/orders/{id}', function ($id) {
 
         Response::success($order)->send();
     } catch (\Exception $e) {
+        Response::error("Errore nel recupero dell'ordine: " . $e->getMessage() . " " . $e->getFile() . " " . $e->getLine(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();
+    }
+});
+
+/**
+ * GET /api/orders/{id}/total - Ritorna il totale
+*/
+Router::get('/orders/{id}/total', function($id) {
+    try {
+        $order = Order::getOrderById($id);
+
+        //Mi prendo i dati in input
+        $data = Order::getRequestData();
+
+        //L'input deve avere questa struttura
+        /* {
+            "guests": 1,
+        } */
+
+        //numero di ospiti che si divideranno
+        $guests = $data['guests'] ?? 1;
+
+        //Totale
+        $total = $order->splitBill($guests);
+
+        Response::success(["total" => $total])->send();
+    } catch (\Exception $e) {
         Response::error('Errore nel recupero della lista orderItems: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();
     }
 });
 
 /**
- * POST /api/orders/ - Lista Orders
+ * POST /api/orders/ - Crea nuovo ordine
 */
 Router::post('/orders', function () {
     try {
@@ -65,35 +122,50 @@ Router::post('/orders', function () {
             return;
         }
 
-        //Controllo se il tavolo esiste e se il è disponibile
-        $table = Table::find($data['table_id']);
-
-        //Verifico se il tavolo esiste
-        if($table === null) {
-            Response::error('Tavolo non trovato', Response::HTTP_NOT_FOUND)->send();
-            //Verifico se il tavolo è libero e se il numero di ospiti è minore o uguale alla capacita
-        } else if(!$table->hasCapacity($data['guests'])) {
-            Response::error('Il tavolo non ha posti disponibili (Max ' . $table->getCapacity() . " posti)"  , Response::HTTP_NOT_FOUND)->send();
-        } 
-
-        //Se il tavolo esiste, non ci sono errori di validazione, posso creare l'ordine
-        $order = Order::create($data);
-
-        //Se tutto è andato a buon fine, occupo il tavolo
-        $table->occupy($data['guests']);
-
-        //Aggiungo l'oggetto Table all'istanza di Order
-        $order->setTable($table); 
-
-        //Creo una record nella tabella pivot OrdersTables
-        OrdersTables::create([
-            "order_id" => $order->getId(), 
-            "table_id" => $table->getId()
-        ]);
+        //Metodo statico che crea l'ordine
+        $order = RestaurantService::createOrder($data);
 
         Response::success($order)->send();
     } catch (\Exception $e) {
         Response::error('Errore nel recupero della lista orderItems: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();
+    }
+});
+
+/**
+ * PUTCH/PUT /api/order_items/{id}/notify - Aggiunge nuova notifica all'ordine
+*/
+Router::patch('/order_items/{id}/notify', function($id) {
+    try {
+        //Mi prendo i dati in input
+        $data = Order::getRequestData();
+
+        //L'input deve avere questa struttura
+        /* {
+            "message": "ciao",
+            "type": "info",
+            "timestamp": "2025/12/12 13:54",
+            "is_read": false
+        } */
+
+        //Verifico che l'ord sia presente
+        $order = Order::getOrderById($id);
+
+        if($order === null) {
+            Response::error('Ordine non trovato', Response::HTTP_NOT_FOUND)->send();
+            return;
+        }
+
+        //Se presente faccio la validazione
+        $errors = Notification::validate($data);
+        if (!empty($errors)) {
+            Response::error('Errore di validazione', Response::HTTP_BAD_REQUEST, $errors)->send();
+            return;
+        }
+
+        //Aggiungo la notifica all'ordine
+
+    } catch(\Exception $e) {
+        Response::error("Errore nell'aggiunta della notifica: " . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();
     }
 });
 
@@ -112,7 +184,7 @@ Router::match(['put', 'patch'], '/orders/{id}', function($id) {
             "table_id": 1,
         } */
 
-        //Verifico che l'orderItem sia presente
+        //Verifico che l'ord sia presente
         $order = Order::getOrderById($id);
         if($order === null) {
             Response::error('Ordine non trovato', Response::HTTP_NOT_FOUND)->send();
@@ -125,7 +197,7 @@ Router::match(['put', 'patch'], '/orders/{id}', function($id) {
             return;
         }
 
-        
+    
         //Verifico se table_id esiste ed è diverso -> quindi se si vuole cambiare all'ordine il tavolo assegnato precedentemente
         if(array_key_exists('table_id', $data) && $data['table_id'] !== $order->getTable()->getId()) {
             //Verifico prima che il nuovo tavolo sia disponibile
@@ -161,31 +233,146 @@ Router::match(['put', 'patch'], '/orders/{id}', function($id) {
 });
 
 /**
- * PUTCH/PUT /api/order_items/{id}/add_order_item - Aggiungi orderItem all'ordine
+ * PUTCH/PUT /api/orders/{id}/add_order_item - Aggiungi orderItem all'ordine
 */
-Router::patch('order_items/{id}/add_order_item', function($id) {
+Router::patch('orders/{id}/add_order_item', function($id) {
     try {
-        //prima verifico che l'ordine esista
+        //Mi prendo i dati in input
+        $data = Order::getRequestData();
+
+        //L'input deve avere questa struttura
+        /* {
+            "menu_item_id": 1,
+            "customizations": "poco piccante",
+            "quantity": 2
+        } */
+
+        //Verifico che l'orderItem sia presente
         $order = Order::getOrderById($id);
 
+        if($order === null) {
+            Response::error('Ordine non trovato', Response::HTTP_NOT_FOUND)->send();
+            return;
+        }
+
+        // Validazione
+        $errors = OrderItem::validate($data);
+        if (!empty($errors)) {
+            Response::error('Errore di validazione', Response::HTTP_BAD_REQUEST, $errors)->send();
+            return;
+        }
+
+        //Se ha passato i primi controlli creo l'orderItem
+        $order->addOrderItem($data);
+
+        Response::success($order, Response::HTTP_OK, "OrderItem aggiunto all'ordine")->send();
+
     } catch(\Exception $e) {
-        Response::error("Errore nell'eliminazione dell'ordine: " . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();        
+        Response::error("Errore durante l'aggiunte dell'OrderItem: " . $e->getMessage() . " " . $e->getFile() . " " . $e->getLine(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();        
     }
 }); 
+
+/**
+ * PUTCH/PUT /api/orders/{id}/add_tip - Aggiunge mancia all'ordine
+*/
+Router::patch('/orders/{id}/add_tip', function($id) {
+    try {
+        //Mi prendo i dati in input
+        $data = Order::getRequestData();
+
+        //L'input deve avere questa struttura
+        /* {
+            "tip": 5,
+        } */
+
+        //Verifico che l'orderItem sia presente
+        $order = Order::getOrderById($id);
+        if($order === null) {
+            Response::error('Ordine non trovato', Response::HTTP_NOT_FOUND)->send();
+            return;
+        }
+
+        // Validazione
+        $errors = OrderItem::validate($data);
+        if (!empty($errors)) {
+            Response::error('Errore di validazione', Response::HTTP_BAD_REQUEST, $errors)->send();
+            return;
+        }
+
+        $amount = $data['tip'] ?? 0;
+
+        $order->addTip($amount);
+
+        Response::success($order, Response::HTTP_OK, "Mancia incrementata correttamente")->send();
+    } catch(\Exception $e) {
+        Response::error("Errore nell'incrementazione della mancia: " . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();        
+    }
+});
+
+/**
+ * PUTCH/PUT /api/orders/{id}/complete - Rende l'ordine completo
+*/
+Router::patch('orders/{id}/complete', function($id) {
+    try {
+        //Verifico che l'orderItem sia presente
+        $order = Order::getOrderById($id);
+
+        if($order === null) {
+            Response::error('Ordine non trovato', Response::HTTP_NOT_FOUND)->send();
+            return;
+        }
+
+        //Completa
+        RestaurantService::completeOrder($order);
+
+        Response::success(null, Response::HTTP_OK, "Ordine completato")->send();
+    } catch(\Exception $e) {
+        Response::error("Errore nel completamento dell'ordine: " . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();        
+    }
+});
+
 
 /**
  * DELETE /api/orders/{id} - Rimuove singolo ordine
 */
 Router::delete('/orders/{id}', function($id) {
     try {
-        //Prendo i dati in input
-        $request = new Request();
-        $data = $request->json();
 
         //Metodo per rimuovere l'ordine, liberare il tavolo e rimuovere il record nella tabella pivot
         Order::removeOrder($id);
 
         Response::success(null, Response::HTTP_OK, "Ordine rimosso con successo")->send();
+    } catch(\Exception $e) {
+        Response::error("Errore nell'eliminazione dell'ordine: " . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();        
+    }
+});
+
+/**
+ * DELETE /api/orders/{id}/remove_order_item - Rimuove singolo orderItem dall'ordine
+*/
+Router::delete('/orders/{id}/remove_order_item', function($id) {
+    try {
+        //Mi prendo i dati in input
+        $data = Order::getRequestData();
+
+        //L'input deve avere questa struttura
+        /* {
+            "order_item_id": 1,
+        } */
+
+        //Verifico che l'ord sia presente
+        $order = Order::getOrderById($id);
+
+        if($order === null) {
+            Response::error('Ordine non trovato', Response::HTTP_NOT_FOUND)->send();
+            return;
+        }
+
+        //rimuovo l'orderItem, facendo prima delle validazioni
+        $order->removeItem($data);   
+        
+        Response::success(null, Response::HTTP_OK, "OrderItem rimosso correttamente dall'ordine ")->send();
+
     } catch(\Exception $e) {
         Response::error("Errore nell'eliminazione dell'ordine: " . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();        
     }

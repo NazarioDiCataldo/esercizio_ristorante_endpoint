@@ -6,7 +6,7 @@ namespace App\Interfaces {
     interface Notificable {
 
         //metodo che invia una notifica
-        public function notify(string $message, string $type = 'info'):void;
+        public function notify(array $data):void;
 
         //ritorna tutte le notifiche
         public function getNotifications():array;

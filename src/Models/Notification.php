@@ -10,10 +10,11 @@ namespace App\Models {
         use WithValidate;
 
         //props
-        protected ?string $message = null;
-        protected ?string $type = null;
-        protected ?string $timestamp = null;
-        protected ?bool $is_read = null;
+        public ?string $message = null;
+        public ?string $type = null;
+        public ?string $timestamp = null;
+        public ?bool $is_read = null;
+        public ?int $order_id = null;
 
         /**
          * Nome della collection

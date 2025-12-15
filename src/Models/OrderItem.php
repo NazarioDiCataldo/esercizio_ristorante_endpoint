@@ -21,8 +21,12 @@ namespace App\Models {
         //Props
         public ?MenuItem $menu_item = null;
         public ?int $quantity = null;
-        public ?string $customization = null;
+        public ?string $customizations = null;
         public ?int $order_id = null;
+
+        //Costanti per i messaggi
+        public const CREATED = 'OrderItem creato con successo';
+        public const NO_DATA = "Non hai fornito dati sufficienti";
 
         /**
          * Nome della collection
@@ -39,8 +43,8 @@ namespace App\Models {
             return $this->quantity;
         }
 
-        public function getCustomization():string {
-            return $this->customization;
+        public function getCustomizations():string {
+            return $this->customizations ?? "";
         }
 
         public function getItem():MenuItem {
@@ -88,7 +92,7 @@ namespace App\Models {
         } 
 
         //Ritorna l'oggetto MenuItem
-        protected function getMenuItem():?MenuItem {
+        public function getMenuItem():?MenuItem {
 
             
             //Mi prendo il valore dell'id del MenuItem
@@ -107,6 +111,8 @@ namespace App\Models {
                 default:
                     return null;
             }
+
+            return null;
 
         }
 
@@ -132,6 +138,8 @@ namespace App\Models {
                 OrderItem::getCompleteOrderItem($item);
                 //Mi richiamo tutti i supplementi per ogni item
                 $item->setAllSupplements();
+                //Richiamo tutte le note collegate ad ogni orderItem
+                $item->setAllNotes();
             }
             unset($item);
 
@@ -152,8 +160,56 @@ namespace App\Models {
             //richiamo i supplementi
             $order_item->setAllSupplements();
 
+            //Richiamo tutte le note collegate ad ogni orderItem
+            //$order_item->setAllNotes();
+
 
             return $order_item;
+        }
+
+        //Metodo da usare in update
+        //Verifica se l'utente vuole cambiare il menuItem collegato all'orderItem
+        //questo necessita di cambiare il record anche sulla tabella pivot MenuOrderItem
+        public function hasAnotherMenuItemId(array $data):void {
+            //Verifico che nell'array della richiesta ci sia la chiave 'menu_item_id' e quindi l'utente vuole cambiare menu_item
+            //Se esiste, controllo se è la stessa dell'oggetto OrderItem oppure è diversa
+            
+            if(array_key_exists('menu_item_id', $data) && $data['menu_item_id'] !== $this->getItem()->getId()) {
+                //Se è cosi, bisogna aggiornare anche la tabella menu_order_items
+                $menu_order_item = MenuOrderItem::getMenuOrderItemById($this->getId());
+                //Aggiorniamo il record
+                $menu_order_item->update(['menu_item_id' => $data['menu_item_id']]);
+                //Mi prendo il menu_item tramite id
+                $menu_item = MenuItem::getMenuItemById($menu_order_item->getMenuItemId());
+                //Settiamo il nuovo MenuItem a OrderItem
+                $this->setMenuItem($menu_item);
+            }
+        } 
+
+        //Crea l'istanza di OrderItem
+        public static function createOrderItem(array $data)  {
+
+            //Verifico che l'oggetto del menu esiste
+            $menu_item_obj = OrderItem::checkMenuItemExists($data['menu_item_id']);
+
+            //se il menu item non esiste torna errore
+            if(!$menu_item_obj) {
+                Response::error('Oggetto dal menu non trovato', Response::HTTP_NOT_FOUND)->send();
+                return;
+            }
+
+            //Altrimenti crea l'orderItem
+            $order_item = OrderItem::create($data);
+
+            //Crea anche il record per il MenuOrderItem
+            MenuOrderItem::create(
+                [
+                    "menu_item_id" => $data['menu_item_id'],
+                    "order_item_id" => $order_item->getId()
+                ]);
+
+            //Ritorno l'istanza di order_item incluso l'oggetto menu_item
+            return OrderItem::getOrderItemById($order_item->getId());
         }
 
         public function deleteOrderItem():int {
@@ -182,7 +238,12 @@ namespace App\Models {
         //Override dei metodi validate
         protected static function validationRules(): array {
         return [
-            "menu_item_id" => ['sometimes','required', 'numeric', 'min:1', 'max:12'],
+            "menu_item_id" => ['sometimes','required', 'numeric', 'min:1', function($field, $value) {
+                //Verifico che il menu_item esista realmente
+                if($value !== null && !OrderItem::checkMenuItemExists($value)) {
+                    return "L'oggetto del menu con id {$value} non esiste";
+                }
+            }],
             "item_type" => ['sometimes','required', function($field, $value) {
                 //Controllo se il tipo è uno tra dish, dessert o beverage
                 if(!in_array($value, [MenuItem::MENU_ITEM_TYPE_DESSERT, MenuItem::MENU_ITEM_TYPE_BEVERAGE, MenuItem::MENU_ITEM_TYPE_DISH])) {

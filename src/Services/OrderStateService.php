@@ -10,12 +10,12 @@ namespace App\Services {
 
         //Metodo per varificare se è possibile avanzare lo stato
         public static function validateTransition(Order $order, string $newState): bool {
-            return empty($order->canTransitionTo($newState)) ? false : true;
+            return empty(Order::canTransitionTo($order, $newState)) ? false : true;
         }
 
         //Metodo che ritorna gli avanzamenti disponibili
         public static function getNextValidStates(Order $order): array {
-            return $order->getAvailableTransitions();
+            return Order::getAvailableTransitions($order);
         }
 
         //Metodo per verificare se un ordine sia cancellabile
@@ -30,7 +30,9 @@ namespace App\Services {
         //Cancella ordine
         public static function cancelOrder(Order $order):void {
             if(self::canCancel($order)) {
-                $order->setState($order::STATE_CANCELLED);
+                $order->update([
+                    "state" => Order::STATE_CANCELLED
+                ]);
             }
         }
     }

@@ -7,7 +7,12 @@ namespace App\Traits {
     //gestire note speciali
     trait HasSpecialNotes {
         
-        protected ?array $special_notes = null;
+        public ?array $special_notes = null;
+
+        //Setter
+        public function setNotes():array {
+            return $this->special_notes;
+        }
 
         //aggiunge una note all'array
         public function addNote(array $data):int {
@@ -38,7 +43,7 @@ namespace App\Traits {
 
         //Aggiunge le tutte le note all'array dell'oggetto OrderItem
         public function setAllNotes():void {
-            $this->setAllNotes($this->getNotes());
+            $this->setNotes($this->getNotes());
         }
 
         //ritorna tutte le note

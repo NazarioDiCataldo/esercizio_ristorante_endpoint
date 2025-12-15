@@ -18,6 +18,7 @@ namespace App\Models {
         use WithValidate;
 
         //props
+        protected ?int $guests = null;
         protected ?Table $table_guests = null; 
         protected ?array $items = null;
         protected ?string $state = null;
@@ -69,12 +70,16 @@ namespace App\Models {
             return $this->service_charge;
         }
 
-        public function getTip():string {
-            return $this->tip;
+        public function getTip():float {
+            return $this->tip ?? 0;
         }
 
         public function getNotifications(): array {
             return $this->notifications;
+        }
+
+        public function getGuests():int {
+            return $this->guests;
         }
 
         //Setters
@@ -123,38 +128,102 @@ namespace App\Models {
             return $this;
         }
 
+        public function setGuests(int $guests):static {
+            if($this->getTable()->validateTableCapacity($guests)) {
+                $this->guests = $guests;
+            }
+            return $this;
+        }
+
         //Metodi nativi
 
         //aggiunge ordine
-        public function addOrderItem(OrderItem $item):void {
-            if($this->validateOrderItem($item)) {
-                $this->items[] = $item;
+        public function addOrderItem(array $data):void {
+            //Verifico se lo stato dell'ordine consente l'aggiunta di un orderItem
+            if(!$this->canAddItem()) {
+                Response::error("Lo stato dell'ordine non consente di aggiungere altri elementi", Response::HTTP_NOT_FOUND)->send();
+                return;
             }
+
+            //Verifico che l'array di dati non sia vuoto
+            if(!Order::validateOrderItem($data)) {
+                Response::error(OrderItem::NO_DATA, Response::HTTP_BAD_REQUEST)->send();
+                return;
+            }
+
+            //Se ha passato i primi controlli creo l'orderItem
+            $order_item = OrderItem::createOrderItem(array_merge($data, ['order_id' => $this->getId()])); //Gli passo pure l'order_id
+        
+            //notifica di aggiunta orderItem 
+            $this->notify([
+                "message" => "Nuovo oggetto del menu aggiunto all'ordine: " . $order_item->toArray(),
+            ]); 
+
+            //Aggiungo l'orderItem anche all'oggetto corrente
+            $current_items = $this->getItems();
+            $this->setItems([
+                ...$current_items,
+                $order_item
+            ]);
         }
 
         //rimuove ordine tramite indice
-        public function removeItem(int $index):void {
-            $this->items = array_filter($this->items, function ($item) use($index) {
+        public function removeItem(array $data):void {
+
+            //Verifico se lo stato dell'ordine consente la rimozione di un orderItem
+            if(!$this->canAddItem()) {
+                Response::error("Lo stato dell'ordine non consente di rimuovere elementi", Response::HTTP_NOT_FOUND)->send();
+                return;
+            }
+
+            //Verifico che l'array di dati non sia vuoto
+            if(!Order::validateOrderItem($data)) {
+                Response::error(OrderItem::NO_DATA, Response::HTTP_BAD_REQUEST)->send();
+                return;
+            }
+
+            //Verifico che l'orderItem sia presente
+            $index = $data['order_item_id'];
+            $order_item = OrderItem::find($index);
+            
+            if($order_item === null) {
+                Response::error('OrderItem non trovato', Response::HTTP_NOT_FOUND)->send();
+                return;
+            }
+            
+            //Rimuovo l'orderItem anche dall'array
+            $items = array_filter($this->items, function () use($index) {
                 return $index !== (int)key($this->items); 
             });
+
+            $this->setItems($items);
+
+            //notifica di aggiunta orderItem 
+            $this->notify([
+                "message" => "Oggetto del menu rimosso dall'ordine.",
+            ]); 
+
+
+            //Procediamo con la rimozione sul db
+            $order_item->deleteOrderItem();
+
+
         }
 
         //Metodi vincolati dall'interfaccia Notificable
         //aggiunge nuova notifica
-        public function notify(string $message, string $type = 'info'): void {
-            $notifications_id = count(NotificationService::$all_notifications) + 1;
+        public function notify(array $data): void {
+            //Creo l'istanza di notifica
+            $not = Notification::create(array_merge($data, ['order_id' => $this->getId()]));
 
-            $this->notifications[$notifications_id] = new Notification([
-                "message" => $message,
-                "type" => $type,
-                "created_at" => date('Y-m-d H:i:s'),
-                "is_read" => false
-            ]);
+            //Aggiungo la notifica all'array di notifiche
+            $this->notifications[$not->getId()] = $not;
         }
 
         //Somma subtotal di tutti gli items
         public function getItemsTotal(): float {
             $total = 0;
+            //print_r($this->getItems());
             foreach($this->items as $item) {
                 $total += $item->getSubTotal();
             }
@@ -178,7 +247,7 @@ namespace App\Models {
         }
 
         //totale / numero persone
-        public function splitBill(int $numbers_of_people) {
+        public function splitBill(int $numbers_of_people = 1) {
             $quoz = $this->getTotal() / $numbers_of_people;
             return number_format($quoz, 2, '.');
         }
@@ -186,12 +255,26 @@ namespace App\Models {
         //aggiunge mancia
         public function addTip(float $amount): void {
             $this->tip += $amount;
+            //Aggiorno il valore sul Database
+            $this->update(['tip' => $this->tip]);
         }
 
         //Metodi vincolati dall'interfaccia Stateful
         public function getCurrentState():string {
             return $this->state;
         }  
+
+        //Ritorna tutte le notifiche associate ad un'ordine
+        public function getAllNotifications(): array {
+            $result = DB::select("SELECT * FROM " . Notification::getTableName() . " WHERE order_id = :id", ['id' => $this->getId()]);
+            if(empty($result)) {
+                return [];
+            } 
+
+            return array_map(function ($item) {
+                return Notification::create($item);
+            }, $result);
+        }
 
         //Ritorna tutti gli orderItems collegati all'ordine passato come parametro
         public static function getOrderItemByOrder(int $order_id, string $select = 'id'):array { //Di default ci interssa sapere solo l'id dell'orderItem, cosi da poterci creare l'istanza
@@ -222,6 +305,9 @@ namespace App\Models {
                 $tablo = OrdersTables::getTableByOrder($order);
                 //Imposto il tavolo tramite setter
                 $order->setTable($tablo);
+                //Imposto tutte le notifiche
+                $nots = $order->getAllNotifications();
+                $order->setNotifications($nots);
             }
 
             return $orders;
@@ -243,6 +329,10 @@ namespace App\Models {
             $tablo = OrdersTables::getTableByOrder($order);
             //Imposto il tavolo tramite setter
             $order->setTable($tablo);
+
+            //Imposto tutte le notifiche
+            $nots = $order->getAllNotifications();
+            $order->setNotifications($nots);
 
             return $order;
         }
@@ -272,6 +362,15 @@ namespace App\Models {
         //Verifica se è possibile cambiare lo stato
         public static function canTransitionTo(Order $order, string $new_state): bool {
             //Verifica per ogni stato
+
+            //verifico se il nuovo state è cancel oppure no
+            if($new_state === Order::STATE_CANCELLED) {
+                if(OrderStateService::canCancel($order)) {
+                    return true;
+                }
+            
+                return false;
+            }
 
             $available_transitions = Order::getAvailableTransitions($order);
             //Se l'array degl stati disponibili ritorna un'array non vuoto, verifica che lo state passato sia contenuto nell'array ritornato
@@ -305,10 +404,12 @@ namespace App\Models {
         }
 
         //cambia stato
-        public function transitionTo(Order $order, string $new_state): void {
+        public function transitionTo(string $new_state): void {
             //se ritorna true, posso effettuare il passaggio
-            if(Order::canTransitionTo($order, $new_state)) {
-                $this->state = $new_state;
+            if(Order::canTransitionTo($this, $new_state)) {
+                $this->update([
+                    "state" => $new_state
+                ]);
             }
         }
 
@@ -318,20 +419,20 @@ namespace App\Models {
             "guests" => ["sometimes", "required", "numeric", "min:1", "max:12"],
             "state" => ['sometimes','required', function($field, $value, $data) {
                 $order = null;
-                $current_state = null;
+
                 //Mi prendo l'order, tramite id (se esiste)
                 if(array_key_exists('id', $data)) {
                     //Se si, uso il metodo find
                     $order = Order::find($data['id']); //non mi serve sapere il tavolo, quindi semplice find
                 }
 
-                //Controllo se il tipo è uno tra dish, dessert o beverage
+                //Controllo se lo state inserito è compatibile con quelli disponibili
                 if(!in_array($value, [Order::STATE_NEW, Order::STATE_PREPARING, Order::STATE_READY, Order::STATE_SERVED, Order::STATE_CANCELLED])) {
                     return "Il tipo deve uno tra: " . Order::STATE_NEW . ", " . Order::STATE_PREPARING . ", " . Order::STATE_READY . ", " . Order::STATE_SERVED . " o " . Order::STATE_CANCELLED;
                     
                     //Se sono nell'update, verifico se il nuovo state è compatibile
                 } else if($order !== null && !Order::canTransitionTo($order, $value)) {
-                    return "Il nuovo stato deve essere uno tra " . Order::getAvailableTransitions($order);
+                    return "Il nuovo stato deve essere uno tra " . implode(", ",Order::getAvailableTransitions($order));
                 } 
 
                 return null;

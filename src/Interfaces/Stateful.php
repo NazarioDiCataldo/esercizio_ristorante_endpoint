@@ -14,7 +14,7 @@ namespace App\Interfaces {
         public static function canTransitionTo(Order $order, string $new_state):bool;
 
         //metodo che cambia lo stato
-        public function transitionTo(Order $order, string $new_state):void;
+        public function transitionTo(string $new_state):void;
 
         //metodo che ritorna gli stati raggiungibili
         public static function getAvailableTransitions(Order $order):array;

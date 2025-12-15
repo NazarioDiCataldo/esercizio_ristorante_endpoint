@@ -7,7 +7,7 @@ namespace App\Traits {
     //calcolare prezzi con supplmenti
     trait CalculatePrices {
 
-        protected ?array $supplements = null; //array associativo di supplementi ['nome' => prezzo]
+        public ?array $supplements = null; //array associativo di supplementi ['nome' => prezzo]
 
         //Imposta tutti i supplementi in automatico all'orderItem, tramite setter
         public function setAllSupplements():void {
@@ -21,6 +21,7 @@ namespace App\Traits {
             $query = "SELECT * FROM supplements WHERE order_item_id = :id";
             
             $supplments = [];
+
             if(!$name) {
                 $supplments = DB::select($query, ["id" => $this->getId()]);
 
@@ -59,7 +60,7 @@ namespace App\Traits {
         protected function getSupplementsTotal():float {
             //Ritorna la SUM dal db, tramite order_item_id
             $sum = DB::select("SELECT SUM(price) FROM supplements WHERE order_item_id = :id", ['id' => $this->getId()]);
-            
+
             return $sum && array_values($sum[0])[0] !== null
                 ? array_values($sum[0])[0]
                 : 0;

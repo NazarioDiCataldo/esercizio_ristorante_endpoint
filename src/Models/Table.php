@@ -24,6 +24,10 @@ namespace App\Models;
     }
 
     //Getters
+    public function getNumber():int {
+        return $this->number;
+    }
+
     public function getCapacity():int {
         return $this->capacity;
     }
@@ -53,11 +57,21 @@ namespace App\Models;
         ]);
     }
 
+    //Verifica se il numero di ospiti sia minore o uguale rispetto alla capacità del tavolo
+    public function validateTableCapacity(int $guests):bool {
+        //Incrementa il numero di ospiti solo se il numero di posti è maggiore rispetto agli ospiti
+        if($this->getCurrentGuests() + $guests <= $this->getCapacity()) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     public function hasCapacity(int $guests):bool {
         //Ritorna il contrario di is_occupied
         //non occupato(false) -> ha capacità(true)
         //occupato(true) -> non ha capacita(false)
-        return !$this->is_occupied && $this->capacity >= $guests;
+        return !$this->is_occupied && $this->validateTableCapacity($guests);
     }
 
     //Override dei metodi validate

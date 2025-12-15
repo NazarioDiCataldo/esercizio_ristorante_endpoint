@@ -7,6 +7,7 @@
 /* Routes per gestione orderItems */
 
 use App\Abstract\MenuItem;
+use App\Models\BaseModel;
 use App\Models\MenuOrderItem;
 use App\Models\Order;
 use App\Utils\Response;
@@ -89,8 +90,8 @@ Router::get('/order_items/{id}/notes', function($id) {
  */
 Router::post('/order_items', function () {
     try {
-        $request = new Request();
-        $data = $request->json();
+        //Mi prendo i dati in input
+        $data = OrderItem::getRequestData();
 
         //L'input deve avere questa struttura
         /* {
@@ -98,6 +99,12 @@ Router::post('/order_items', function () {
             "customizations": "poco piccante",
             "quantity": 2
         } */
+       
+        //Verifico che l'array di dati non sia vuoto
+        if(!Order::validateOrderItem($data)) {
+            Response::error(OrderItem::NO_DATA, Response::HTTP_BAD_REQUEST)->send();
+            return;
+        }
 
         // Validazione
         $errors = OrderItem::validate($data);
@@ -106,26 +113,10 @@ Router::post('/order_items', function () {
             return;
         }
 
-        $menu_item_obj = OrderItem::checkMenuItemExists($data['menu_item_id']);
-
-        //se il menu item non esiste torna errore
-        if(!$menu_item_obj) {
-            Response::error('Oggetto dal menu non trovato', Response::HTTP_NOT_FOUND)->send();
-        }
-
-        //Altrimenti crea l'orderItem
-        $order_item = OrderItem::create($data);
-        //Crea anche il record per il MenuOrderItem
-        MenuOrderItem::create(
-            [
-                "menu_item_id" => $data['menu_item_id'],
-                "order_item_id" => $order_item->getId()
-            ]);
-
-        //Ritorno l'istanza di order_item incluso l'oggetto menu_item
-        $order_item = OrderItem::getOrderItemById($order_item->getId());
+        //Se ha passato i primi controlli creo l'orderItem
+        $order_item = OrderItem::createOrderItem($data);
         
-        Response::success($order_item, Response::HTTP_CREATED, "OrderItem creata con successo")->send();
+        Response::success($order_item, Response::HTTP_CREATED, OrderItem::CREATED)->send();
 
     } catch (\Exception $e) {
         Response::error('Errore durante la creazione della nuova OrderItem: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR)->send();
@@ -164,16 +155,7 @@ Router::match(['put', 'patch'], '/order_items/{id}', function($id) {
 
         
         //Verifico se menu_item_id esiste ed è diverso
-        if(array_key_exists('menu_item_id', $data) && $data['menu_item_id'] !== $order_item->getItem()->getId()) {
-            //Se è cosi, bisogna aggiornare anche la tabella menu_order_items
-            $menu_order_item = MenuOrderItem::getMenuOrderItemById($order_item->getId());
-            //Aggiorniamo il record
-            $menu_order_item->update(['menu_item_id' => $data['menu_item_id']]);
-            //Mi prendo il menu_item tramite id
-            $menu_item = MenuItem::getMenuItemById($menu_order_item->getMenuItemId());
-            //Settiamo il nuovo MenuItem a OrderItem
-            $order_item->setMenuItem($menu_item);
-        }
+        $order_item->hasAnotherMenuItemId($data);
 
         //Aggiorno l'orderItem
         $order_item->update($data);
@@ -265,8 +247,10 @@ Router::delete('/order_items/{id}', function($id) {
     try {
         //Verifico che l'orderItem sia presente
         $order_item = OrderItem::find($id);
+
         if($order_item === null) {
             Response::error('OrderItem non trovato', Response::HTTP_NOT_FOUND)->send();
+            return;
         }
 
         //Procediamo con la rimozione
@@ -346,9 +330,9 @@ Router::delete('/order_items/{id}/remove_note', function($id) {
         }
 
         //Verifico se esiste almeno un supplemento con il nome richiesto
-        $supplements = $order_item->getNotes($data['message']);
+        $notes = $order_item->getNotes($data['message']);
 
-        if(empty($supplements)) {
+        if(empty($notes)) {
             Response::error('Nota non trovata', Response::HTTP_NOT_FOUND)->send();
             return; 
         }

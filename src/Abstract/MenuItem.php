@@ -37,19 +37,23 @@ namespace App\Abstract {
         public static function getMenuItemById(int $id):?static {
             $result = DB::select("SELECT * FROM " . static::getTableName() . " WHERE id = :id", ["id" => $id]);
             //Mi creo l'istanza tramite switch
-            switch($result['item_type']) {
-                case MenuItem::MENU_ITEM_TYPE_DISH :
-                    return Dish::find($result['id']);
-                
-                case MenuItem::MENU_ITEM_TYPE_BEVERAGE :
-                    return Beverage::find($result['id']);
-                
-                case MenuItem::MENU_ITEM_TYPE_DESSERT :
-                    return Dessert::find($result['id']);
-                
-                default:
-                    return null;
-            }
+            if(!empty($result)) {
+                switch($result[0]['item_type']) {
+                    case MenuItem::MENU_ITEM_TYPE_DISH :
+                        return Dish::find($result[0]['id']);
+                    
+                    case MenuItem::MENU_ITEM_TYPE_BEVERAGE :
+                        return Beverage::find($result[0]['id']);
+                    
+                    case MenuItem::MENU_ITEM_TYPE_DESSERT :
+                        return Dessert::find($result[0]['id']);
+                    
+                    default:
+                        return null;
+                }
+            } 
+
+            return null;
         }
 
         //Costruttore

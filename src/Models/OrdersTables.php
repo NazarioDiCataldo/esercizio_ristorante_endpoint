@@ -18,6 +18,7 @@ namespace App\Models {
         //Props
         protected ?int $table_id = null;
         protected ?int $order_id = null;
+        protected ?int $guests = null;
 
         /**
          * Nome della collection
@@ -57,12 +58,14 @@ namespace App\Models {
             return $row ? new static($row) : null;
         }
 
-
         //Override dei metodi validate
         protected static function validationRules(): array {
         return [
             "table_id" => ['sometimes','required', 'numeric', 'min:1'],
-            "order_id" => ['sometimes', 'required', 'numeric', 'min:1']
+            "order_id" => ['sometimes', 'required', 'numeric', 'min:1'],
+            "guests" => ["sometimes", "required", "numeric", "min:1", function($field, $value, $data) {
+                //Mi prendo il tavolo 
+            }],
             ];
         }
     }
